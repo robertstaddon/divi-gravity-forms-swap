@@ -1,6 +1,6 @@
 <?php
 /**
- * Tools admin page and replacement request handlers.
+ * Divi admin page and replacement request handlers.
  *
  * @package Divi_GF_Swap
  */
@@ -17,6 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Divi_GF_Swap_Admin {
 
 	const PAGE_SLUG     = 'divi-gravity-forms-swap';
+	const PARENT_SLUG   = 'et_divi_options';
 	const POST_ACTION   = 'divi_gf_swap_replace';
 	const NONCE_ACTION  = 'divi_gf_swap_replace';
 	const REPORT_PREFIX = 'divi_gf_swap_report_';
@@ -25,17 +26,22 @@ class Divi_GF_Swap_Admin {
 	 * Hook admin screens and POST handlers.
 	 */
 	public static function init(): void {
-		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ) );
+		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ), 20 );
 		add_action( 'admin_post_' . self::POST_ACTION, array( __CLASS__, 'handle_replace' ) );
+		add_filter(
+			'plugin_action_links_' . plugin_basename( DIVI_GF_SWAP_FILE ),
+			array( __CLASS__, 'plugin_action_links' )
+		);
 	}
 
 	/**
-	 * Add Tools > Divi Gravity Forms Swap.
+	 * Add Divi > Gravity Forms Swap.
 	 */
 	public static function register_menu(): void {
-		add_management_page(
-			__( 'Divi Gravity Forms Swap', 'divi-gravity-forms-swap' ),
-			__( 'Divi Gravity Forms Swap', 'divi-gravity-forms-swap' ),
+		add_submenu_page(
+			self::PARENT_SLUG,
+			__( 'Gravity Forms Swap', 'divi-gravity-forms-swap' ),
+			__( 'Gravity Forms Swap', 'divi-gravity-forms-swap' ),
 			'manage_options',
 			self::PAGE_SLUG,
 			array( __CLASS__, 'render_page' )
@@ -43,14 +49,36 @@ class Divi_GF_Swap_Admin {
 	}
 
 	/**
-	 * Tools page URL.
+	 * Admin page URL.
 	 *
 	 * @param array<string, scalar> $args Extra query args.
 	 * @return string
 	 */
 	public static function page_url( array $args = array() ): string {
 		$args['page'] = self::PAGE_SLUG;
-		return add_query_arg( $args, admin_url( 'tools.php' ) );
+		return add_query_arg( $args, admin_url( 'admin.php' ) );
+	}
+
+	/**
+	 * Add a Settings link on the Plugins screen.
+	 *
+	 * @param array<string, string> $links Existing action links.
+	 * @return array<string, string>
+	 */
+	public static function plugin_action_links( array $links ): array {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return $links;
+		}
+
+		$settings = array(
+			'settings' => sprintf(
+				'<a href="%s">%s</a>',
+				esc_url( self::page_url() ),
+				esc_html__( 'Settings', 'divi-gravity-forms-swap' )
+			),
+		);
+
+		return $settings + $links;
 	}
 
 	/**
@@ -65,7 +93,7 @@ class Divi_GF_Swap_Admin {
 		$post_id = isset( $_GET['post_id'] ) ? absint( $_GET['post_id'] ) : 0;
 
 		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Divi Gravity Forms Swap', 'divi-gravity-forms-swap' ) . '</h1>';
+		echo '<h1>' . esc_html__( 'Gravity Forms Swap', 'divi-gravity-forms-swap' ) . '</h1>';
 
 		self::render_report_notice();
 
@@ -103,10 +131,11 @@ class Divi_GF_Swap_Admin {
 			);
 		}
 
-		$updated = 0;
-		$skipped = 0;
-		$failed  = 0;
-		$items   = array();
+		$updated     = 0;
+		$skipped     = 0;
+		$failed      = 0;
+		$items       = array();
+		$updated_ids = array();
 
 		foreach ( $targets as $row ) {
 			$title   = ( isset( $row->post_title ) && '' !== $row->post_title ) ? (string) $row->post_title : __( '(no title)', 'divi-gravity-forms-swap' );
@@ -115,11 +144,16 @@ class Divi_GF_Swap_Admin {
 
 			if ( 'updated' === $result['status'] ) {
 				++$updated;
+				$updated_ids[] = (int) $row->ID;
 			} elseif ( 'failed' === $result['status'] ) {
 				++$failed;
 			} else {
 				++$skipped;
 			}
+		}
+
+		if ( ! empty( $updated_ids ) ) {
+			Divi_GF_Swap_Content::bust_divi_caches( $updated_ids );
 		}
 
 		set_transient(

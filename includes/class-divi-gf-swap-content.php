@@ -18,8 +18,18 @@ class Divi_GF_Swap_Content {
 
 	const OLD_OPENER       = '<!-- wp:d5-gravity-form-module/divi-gravity-form';
 	const OLD_CLOSER       = '<!-- /wp:d5-gravity-form-module/divi-gravity-form -->';
+	const NATIVE_BLOCK     = 'divi/gravity-forms';
 	const BUILDER_VERSION  = '5.11.0';
 	const MAX_REPLACEMENTS = 20000;
+
+	/**
+	 * Cached default Gravity Forms module preset ID for this request.
+	 *
+	 * Empty string means none; null means not loaded yet.
+	 *
+	 * @var string|null
+	 */
+	private static $default_preset_id = null;
 
 	/**
 	 * Count WP Tools Gravity Forms block openers in a string.
@@ -226,7 +236,7 @@ class Divi_GF_Swap_Content {
 	public static function build_native_block( string $form_id ): string {
 		$attrs = array(
 			'gravityForm'    => array(
-				'advanced'    => array(
+				'advanced'     => array(
 					'useAjax' => array(
 						'desktop' => array(
 							'value' => 'on',
@@ -244,12 +254,95 @@ class Divi_GF_Swap_Content {
 			'builderVersion' => self::BUILDER_VERSION,
 		);
 
+		$preset_id = self::get_default_module_preset_id();
+		if ( '' !== $preset_id ) {
+			$attrs['modulePreset'] = array( $preset_id );
+		}
+
 		$json = wp_json_encode( $attrs );
 		if ( ! is_string( $json ) ) {
 			$json = '{}';
 		}
 
-		return '<!-- wp:divi/gravity-forms ' . $json . ' /-->';
+		return '<!-- wp:' . self::NATIVE_BLOCK . ' ' . $json . ' /-->';
+	}
+
+	/**
+	 * Default Gravity Forms module preset ID from Divi, if one is set.
+	 *
+	 * @return string Preset UUID, or empty string.
+	 */
+	public static function get_default_module_preset_id(): string {
+		if ( null !== self::$default_preset_id ) {
+			return self::$default_preset_id;
+		}
+
+		self::$default_preset_id = '';
+
+		if ( ! class_exists( '\ET\Builder\Packages\GlobalData\GlobalPreset' ) ) {
+			return self::$default_preset_id;
+		}
+
+		$data = \ET\Builder\Packages\GlobalData\GlobalPreset::get_data();
+		if ( ! is_array( $data ) ) {
+			return self::$default_preset_id;
+		}
+
+		$preset_id = $data['module'][ self::NATIVE_BLOCK ]['default'] ?? '';
+		if ( is_string( $preset_id ) ) {
+			self::$default_preset_id = $preset_id;
+		}
+
+		return self::$default_preset_id;
+	}
+
+	/**
+	 * Invalidate Divi CSS once for a set of updated posts.
+	 *
+	 * One post is cleared surgically. Two or more posts trigger a single site-wide
+	 * Divi CSS invalidation so bulk replace does not glob/purge once per page.
+	 *
+	 * @param array<int, int> $post_ids Updated post IDs.
+	 */
+	public static function bust_divi_caches( array $post_ids ): void {
+		$post_ids = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'absint', $post_ids )
+				)
+			)
+		);
+
+		if ( empty( $post_ids ) ) {
+			return;
+		}
+
+		if ( class_exists( 'ET_Core_PageResource' ) ) {
+			if ( 1 === count( $post_ids ) ) {
+				ET_Core_PageResource::remove_static_resources( $post_ids[0], 'all' );
+			} else {
+				ET_Core_PageResource::remove_static_resources( 'all', 'all' );
+			}
+
+			return;
+		}
+
+		$meta_keys = array(
+			'et_enqueued_post_fonts',
+			'_et_dynamic_cached_shortcodes',
+			'_et_dynamic_cached_attributes',
+			'_et_builder_module_features_cache',
+			'_divi_dynamic_assets_cached_modules',
+			'_divi_dynamic_assets_cached_feature_used',
+			'_divi_dynamic_assets_canvases_used',
+		);
+
+		foreach ( $post_ids as $id ) {
+			foreach ( $meta_keys as $key ) {
+				delete_post_meta( $id, $key );
+			}
+			clean_post_cache( $id );
+		}
 	}
 
 	/**
