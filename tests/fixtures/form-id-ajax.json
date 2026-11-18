@@ -1,0 +1,23 @@
+{
+  "name": "form-id-ajax",
+  "input": {
+    "gravityform": {
+      "advanced": {
+        "desktop": {
+          "value": {
+            "id": "gf-12",
+            "useAjax": "off",
+            "showTitle": "on",
+            "showDescription": "on"
+          }
+        }
+      }
+    }
+  },
+  "expect": {
+    "formId": "12",
+    "useAjax": "off",
+    "mappedContains": ["formId", "useAjax", "gravityform"],
+    "warningsEmpty": true
+  }
+}

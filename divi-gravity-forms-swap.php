@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       Divi Gravity Forms Swap
  * Plugin URI:        https://github.com/robertstaddon/divi-gravity-forms-swap
- * Description:       Scan posts, pages, and Divi layouts for WP Tools Gravity Forms Divi 5 modules and replace them with the native Divi 5 Gravity Forms module.
- * Version:           1.0.3
+ * Description:       Scan posts, pages, and Divi layouts for WP Tools Gravity Forms Divi 5 modules and replace them with the native Divi 5 Gravity Forms module, copying form ID, Ajax, and mappable styles.
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Requires Plugins:  gravityforms
@@ -22,10 +22,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DIVI_GF_SWAP_VERSION', '1.0.3' );
+define( 'DIVI_GF_SWAP_VERSION', '1.1.0' );
 define( 'DIVI_GF_SWAP_FILE', __FILE__ );
 define( 'DIVI_GF_SWAP_PATH', plugin_dir_path( __FILE__ ) );
 
+require_once DIVI_GF_SWAP_PATH . 'includes/class-divi-gf-swap-mapper.php';
 require_once DIVI_GF_SWAP_PATH . 'includes/class-divi-gf-swap-content.php';
 require_once DIVI_GF_SWAP_PATH . 'includes/class-divi-gf-swap-admin.php';
 

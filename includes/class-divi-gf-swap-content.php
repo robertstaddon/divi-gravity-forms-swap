@@ -23,6 +23,21 @@ class Divi_GF_Swap_Content {
 	const MAX_REPLACEMENTS = 20000;
 
 	/**
+	 * Post types scanned for WP Tools Gravity Forms modules.
+	 *
+	 * @var array<int, string>
+	 */
+	const SCAN_POST_TYPES = array(
+		'post',
+		'page',
+		'et_pb_layout',
+		'et_header_layout',
+		'et_body_layout',
+		'et_footer_layout',
+		'et_template',
+	);
+
+	/**
 	 * Cached default Gravity Forms module preset ID for this request.
 	 *
 	 * Empty string means none; null means not loaded yet.
@@ -52,19 +67,26 @@ class Divi_GF_Swap_Content {
 		$marker     = self::OLD_OPENER;
 		$like       = '%' . $wpdb->esc_like( $marker ) . '%';
 		$marker_len = strlen( $marker );
+		$types      = self::SCAN_POST_TYPES;
+		$in         = implode( ', ', array_fill( 0, count( $types ), '%s' ) );
 
+		$args = array_merge(
+			array( $marker, $marker_len ),
+			$types,
+			array( $like )
+		);
+
+		// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,WordPress.DB.PreparedSQL.NotPrepared -- dynamic IN list.
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT ID, post_title, post_type, post_status,
 					( LENGTH(post_content) - LENGTH( REPLACE( post_content, %s, '' ) ) ) / %d AS module_count
 				FROM {$wpdb->posts}
-				WHERE post_type IN ( 'post', 'page', 'et_pb_layout' )
+				WHERE post_type IN ( {$in} )
 				  AND post_status NOT IN ( 'trash', 'auto-draft' )
 				  AND post_content LIKE %s
 				ORDER BY post_type ASC, post_title ASC",
-				$marker,
-				$marker_len,
-				$like
+				...$args
 			)
 		);
 
@@ -100,19 +122,33 @@ class Divi_GF_Swap_Content {
 	 *
 	 * @param int    $post_id Post ID.
 	 * @param string $title   Post title.
-	 * @return array{status: string, post_id: int, title: string, replaced: int, remaining: int, skipped: int, form_ids: array<int, string>}
+	 * @return array{
+	 *   status: string,
+	 *   post_id: int,
+	 *   title: string,
+	 *   replaced: int,
+	 *   remaining: int,
+	 *   skipped: int,
+	 *   form_ids: array<int, string>,
+	 *   mapped: array<int, string>,
+	 *   skipped_keys: array<int, string>,
+	 *   warnings: array<int, string>
+	 * }
 	 */
 	public static function replace_one( int $post_id, string $title ): array {
 		global $wpdb;
 
 		$base = array(
-			'status'    => 'skipped',
-			'post_id'   => $post_id,
-			'title'     => $title,
-			'replaced'  => 0,
-			'remaining' => 0,
-			'skipped'   => 0,
-			'form_ids'  => array(),
+			'status'       => 'skipped',
+			'post_id'      => $post_id,
+			'title'        => $title,
+			'replaced'     => 0,
+			'remaining'    => 0,
+			'skipped'      => 0,
+			'form_ids'     => array(),
+			'mapped'       => array(),
+			'skipped_keys' => array(),
+			'warnings'     => array(),
 		);
 
 		$content = $wpdb->get_var(
@@ -130,8 +166,11 @@ class Divi_GF_Swap_Content {
 		$result = self::replace_blocks( $content );
 
 		if ( $result['content'] === $content ) {
-			$base['remaining'] = $before;
-			$base['skipped']   = $result['skipped'];
+			$base['remaining']    = $before;
+			$base['skipped']      = $result['skipped'];
+			$base['mapped']       = $result['mapped'];
+			$base['skipped_keys'] = $result['skipped_keys'];
+			$base['warnings']     = $result['warnings'];
 			return $base;
 		}
 
@@ -148,9 +187,12 @@ class Divi_GF_Swap_Content {
 		);
 
 		if ( false === $saved ) {
-			$base['status']    = 'failed';
-			$base['remaining'] = $before;
-			$base['skipped']   = $result['skipped'];
+			$base['status']       = 'failed';
+			$base['remaining']    = $before;
+			$base['skipped']      = $result['skipped'];
+			$base['mapped']       = $result['mapped'];
+			$base['skipped_keys'] = $result['skipped_keys'];
+			$base['warnings']     = $result['warnings'];
 			return $base;
 		}
 
@@ -159,13 +201,16 @@ class Divi_GF_Swap_Content {
 		clean_post_cache( $post_id );
 
 		return array(
-			'status'    => 'updated',
-			'post_id'   => $post_id,
-			'title'     => $title,
-			'replaced'  => $result['replaced'],
-			'remaining' => self::count_blocks( $result['content'] ),
-			'skipped'   => $result['skipped'],
-			'form_ids'  => $result['form_ids'],
+			'status'       => 'updated',
+			'post_id'      => $post_id,
+			'title'        => $title,
+			'replaced'     => $result['replaced'],
+			'remaining'    => self::count_blocks( $result['content'] ),
+			'skipped'      => $result['skipped'],
+			'form_ids'     => $result['form_ids'],
+			'mapped'       => $result['mapped'],
+			'skipped_keys' => $result['skipped_keys'],
+			'warnings'     => $result['warnings'],
 		);
 	}
 
@@ -175,14 +220,25 @@ class Divi_GF_Swap_Content {
 	 * Invalid JSON blocks are left in place and counted as skipped.
 	 *
 	 * @param string $content Post content.
-	 * @return array{content: string, replaced: int, skipped: int, form_ids: array<int, string>}
+	 * @return array{
+	 *   content: string,
+	 *   replaced: int,
+	 *   skipped: int,
+	 *   form_ids: array<int, string>,
+	 *   mapped: array<int, string>,
+	 *   skipped_keys: array<int, string>,
+	 *   warnings: array<int, string>
+	 * }
 	 */
 	public static function replace_blocks( string $content ): array {
 		$result = array(
-			'content'  => $content,
-			'replaced' => 0,
-			'skipped'  => 0,
-			'form_ids' => array(),
+			'content'      => $content,
+			'replaced'     => 0,
+			'skipped'      => 0,
+			'form_ids'     => array(),
+			'mapped'       => array(),
+			'skipped_keys' => array(),
+			'warnings'     => array(),
 		);
 
 		$offset = 0;
@@ -203,8 +259,8 @@ class Divi_GF_Swap_Content {
 				continue;
 			}
 
-			$form_id     = self::extract_form_id( $block['attrs'] );
-			$replacement = self::build_native_block( $form_id );
+			$mapped      = Divi_GF_Swap_Mapper::map( $block['attrs'] );
+			$replacement = self::build_native_block_from_map( $mapped );
 
 			$pieces[] = substr( $content, $last, $block['start'] - $last );
 			$pieces[] = $replacement;
@@ -213,7 +269,10 @@ class Divi_GF_Swap_Content {
 			$offset = $block['end'];
 
 			++$result['replaced'];
-			$result['form_ids'][] = $form_id;
+			$result['form_ids'][] = Divi_GF_Swap_Mapper::extract_form_id( $block['attrs'] );
+			$result['mapped']    = array_values( array_unique( array_merge( $result['mapped'], $mapped['mapped'] ) ) );
+			$result['skipped_keys'] = array_values( array_unique( array_merge( $result['skipped_keys'], $mapped['skipped'] ) ) );
+			$result['warnings']  = array_values( array_unique( array_merge( $result['warnings'], $mapped['warnings'] ) ) );
 			++$guard;
 		}
 
@@ -228,31 +287,15 @@ class Divi_GF_Swap_Content {
 	}
 
 	/**
-	 * Build a native Divi 5 Gravity Forms self-closing block.
+	 * Build a native Divi 5 Gravity Forms self-closing block from mapped attrs.
 	 *
-	 * @param string $form_id Numeric form ID, or empty string.
+	 * @param array{attrs: array<string, mixed>} $mapped Mapper result.
 	 * @return string
 	 */
-	public static function build_native_block( string $form_id ): string {
-		$attrs = array(
-			'gravityForm'    => array(
-				'advanced'     => array(
-					'useAjax' => array(
-						'desktop' => array(
-							'value' => 'on',
-						),
-					),
-				),
-				'innerContent' => array(
-					'desktop' => array(
-						'value' => array(
-							'formId' => $form_id,
-						),
-					),
-				),
-			),
-			'builderVersion' => self::BUILDER_VERSION,
-		);
+	public static function build_native_block_from_map( array $mapped ): string {
+		$attrs = isset( $mapped['attrs'] ) && is_array( $mapped['attrs'] ) ? $mapped['attrs'] : array();
+
+		$attrs['builderVersion'] = self::BUILDER_VERSION;
 
 		$preset_id = self::get_default_module_preset_id();
 		if ( '' !== $preset_id ) {
@@ -265,6 +308,31 @@ class Divi_GF_Swap_Content {
 		}
 
 		return '<!-- wp:' . self::NATIVE_BLOCK . ' ' . $json . ' /-->';
+	}
+
+	/**
+	 * Build a native block from a form ID only (legacy helper / tests).
+	 *
+	 * @param string $form_id Numeric form ID, or empty string.
+	 * @return string
+	 */
+	public static function build_native_block( string $form_id ): string {
+		$mapped = Divi_GF_Swap_Mapper::map(
+			array(
+				'gravityform' => array(
+					'advanced' => array(
+						'desktop' => array(
+							'value' => array(
+								'id'      => $form_id,
+								'useAjax' => 'off',
+							),
+						),
+					),
+				),
+			)
+		);
+
+		return self::build_native_block_from_map( $mapped );
 	}
 
 	/**
@@ -352,23 +420,7 @@ class Divi_GF_Swap_Content {
 	 * @return string Numeric ID, or empty string when missing / gf-0.
 	 */
 	public static function extract_form_id( array $attrs ): string {
-		$raw = '';
-
-		if ( isset( $attrs['gravityform']['advanced']['desktop']['value']['id'] ) ) {
-			$raw = $attrs['gravityform']['advanced']['desktop']['value']['id'];
-		}
-
-		if ( ! is_string( $raw ) ) {
-			$raw = is_scalar( $raw ) ? (string) $raw : '';
-		}
-
-		$id = (string) preg_replace( '/^gf-/i', '', $raw );
-
-		if ( '' === $id || '0' === $id ) {
-			return '';
-		}
-
-		return $id;
+		return Divi_GF_Swap_Mapper::extract_form_id( $attrs );
 	}
 
 	/**

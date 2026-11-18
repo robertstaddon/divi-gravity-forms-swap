@@ -177,7 +177,7 @@ class Divi_GF_Swap_Admin {
 	private static function render_scan(): void {
 		$results = Divi_GF_Swap_Content::find_matches();
 
-		echo '<p>' . esc_html__( 'Scan posts, pages, and Divi Theme Builder layouts for WP Tools Gravity Forms Divi 5 modules, then replace them with the native Divi 5 Gravity Forms module. Only the form ID is copied; styles and other settings are not.', 'divi-gravity-forms-swap' ) . '</p>';
+		echo '<p>' . esc_html__( 'Scan posts, pages, Divi layouts, and Theme Builder layouts for WP Tools Gravity Forms Divi 5 modules, then replace them with the native Divi 5 Gravity Forms module. Form ID, Ajax, and mappable styles are copied. Field grid gaps, wrapper spacing, send-link button styles, product/list field styles, and hide-title / hide-description toggles cannot move (native Divi always shows title and description).', 'divi-gravity-forms-swap' ) . '</p>';
 
 		if ( empty( $results ) ) {
 			echo '<div class="notice notice-success"><p>' . esc_html__( 'No posts, pages, or layouts contain WP Tools Gravity Forms Divi 5 modules.', 'divi-gravity-forms-swap' ) . '</p></div>';
@@ -226,7 +226,7 @@ class Divi_GF_Swap_Admin {
 			echo '<p>' . esc_html(
 				sprintf(
 					/* translators: 1: post title, 2: post ID */
-					__( 'Replace WP Tools Gravity Forms modules on "%1$s" (ID %2$d) with the native Divi 5 Gravity Forms module? Only the form ID is copied. Styles and other settings are not. A revision is saved first.', 'divi-gravity-forms-swap' ),
+					__( 'Replace WP Tools Gravity Forms modules on "%1$s" (ID %2$d) with the native Divi 5 Gravity Forms module? Form ID, Ajax, and mappable styles are copied. A revision is saved first.', 'divi-gravity-forms-swap' ),
 					$title,
 					$post_id
 				)
@@ -238,7 +238,7 @@ class Divi_GF_Swap_Admin {
 				return;
 			}
 
-			echo '<p><strong>' . esc_html__( 'This will rewrite post_content on every item listed below.', 'divi-gravity-forms-swap' ) . '</strong> ' . esc_html__( 'WP Tools Gravity Forms Divi 5 modules are replaced with the native Divi 5 Gravity Forms module. Only the form ID is copied. A revision is saved first.', 'divi-gravity-forms-swap' ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'This will rewrite post_content on every item listed below.', 'divi-gravity-forms-swap' ) . '</strong> ' . esc_html__( 'WP Tools Gravity Forms Divi 5 modules are replaced with the native Divi 5 Gravity Forms module. Form ID, Ajax, and mappable styles are copied. A revision is saved first.', 'divi-gravity-forms-swap' ) . '</p>';
 			self::render_match_table( $results, false );
 		}
 
@@ -349,8 +349,16 @@ class Divi_GF_Swap_Admin {
 	 * @return string
 	 */
 	private static function format_post_type( string $post_type ): string {
-		if ( 'et_pb_layout' === $post_type ) {
-			return __( 'Divi layout', 'divi-gravity-forms-swap' );
+		$labels = array(
+			'et_pb_layout'     => __( 'Divi layout', 'divi-gravity-forms-swap' ),
+			'et_header_layout' => __( 'Theme Builder header', 'divi-gravity-forms-swap' ),
+			'et_body_layout'   => __( 'Theme Builder body', 'divi-gravity-forms-swap' ),
+			'et_footer_layout' => __( 'Theme Builder footer', 'divi-gravity-forms-swap' ),
+			'et_template'      => __( 'Theme Builder template', 'divi-gravity-forms-swap' ),
+		);
+
+		if ( isset( $labels[ $post_type ] ) ) {
+			return $labels[ $post_type ];
 		}
 
 		$object = get_post_type_object( $post_type );
@@ -418,6 +426,9 @@ class Divi_GF_Swap_Admin {
 		$form_ids  = isset( $item['form_ids'] ) && is_array( $item['form_ids'] ) ? $item['form_ids'] : array();
 
 		$form_label = self::format_form_ids( $form_ids );
+		$mapped     = isset( $item['mapped'] ) && is_array( $item['mapped'] ) ? $item['mapped'] : array();
+		$skipped_keys = isset( $item['skipped_keys'] ) && is_array( $item['skipped_keys'] ) ? $item['skipped_keys'] : array();
+		$warnings   = isset( $item['warnings'] ) && is_array( $item['warnings'] ) ? $item['warnings'] : array();
 
 		if ( 'updated' === $status ) {
 			$message = sprintf(
@@ -438,6 +449,11 @@ class Divi_GF_Swap_Admin {
 				);
 			}
 
+			$style_note = self::format_style_notes( $mapped, $skipped_keys, $warnings );
+			if ( '' !== $style_note ) {
+				$message .= ' ' . $style_note;
+			}
+
 			return $message;
 		}
 
@@ -456,6 +472,75 @@ class Divi_GF_Swap_Admin {
 			$title,
 			$post_id
 		);
+	}
+
+	/**
+	 * Compact mapped / skipped / warning notes for the report.
+	 *
+	 * @param array<int, mixed> $mapped       Mapped style groups.
+	 * @param array<int, mixed> $skipped_keys Skipped style groups that had data.
+	 * @param array<int, mixed> $warnings     Behavior warnings.
+	 * @return string
+	 */
+	private static function format_style_notes( array $mapped, array $skipped_keys, array $warnings ): string {
+		$parts = array();
+
+		$mapped_labels = array_values(
+			array_filter(
+				array_map(
+					static function ( $value ) {
+						return is_scalar( $value ) ? (string) $value : '';
+					},
+					$mapped
+				)
+			)
+		);
+		$skipped_labels = array_values(
+			array_filter(
+				array_map(
+					static function ( $value ) {
+						return is_scalar( $value ) ? (string) $value : '';
+					},
+					$skipped_keys
+				)
+			)
+		);
+		$warning_labels = array_values(
+			array_filter(
+				array_map(
+					static function ( $value ) {
+						return is_scalar( $value ) ? (string) $value : '';
+					},
+					$warnings
+				)
+			)
+		);
+
+		if ( ! empty( $mapped_labels ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: comma-separated mapped style groups */
+				__( 'Mapped: %s.', 'divi-gravity-forms-swap' ),
+				implode( ', ', array_slice( $mapped_labels, 0, 12 ) ) . ( count( $mapped_labels ) > 12 ? '…' : '' )
+			);
+		}
+
+		if ( ! empty( $skipped_labels ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: comma-separated skipped style groups */
+				__( 'Skipped styles: %s.', 'divi-gravity-forms-swap' ),
+				implode( ', ', array_slice( $skipped_labels, 0, 12 ) ) . ( count( $skipped_labels ) > 12 ? '…' : '' )
+			);
+		}
+
+		if ( ! empty( $warning_labels ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: comma-separated warnings */
+				__( 'Warnings: %s.', 'divi-gravity-forms-swap' ),
+				implode( ', ', $warning_labels )
+			);
+		}
+
+		return implode( ' ', $parts );
 	}
 
 	/**

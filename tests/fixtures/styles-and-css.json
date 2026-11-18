@@ -1,0 +1,112 @@
+{
+  "name": "styles-and-css",
+  "input": {
+    "gravityform": {
+      "advanced": {
+        "desktop": {
+          "value": {
+            "id": "5",
+            "useAjax": "on"
+          }
+        }
+      }
+    },
+    "title": {
+      "decoration": {
+        "font": {
+          "font": {
+            "desktop": {
+              "value": {
+                "size": "28px",
+                "color": "#111111"
+              }
+            }
+          }
+        }
+      }
+    },
+    "label": {
+      "decoration": {
+        "font": {
+          "font": {
+            "desktop": {
+              "value": {
+                "size": "15px",
+                "weight": "700"
+              }
+            }
+          }
+        }
+      }
+    },
+    "inputGeneral": {
+      "decoration": {
+        "background": {
+          "desktop": {
+            "color": {
+              "value": "#eeeeee"
+            }
+          }
+        },
+        "border": {
+          "desktop": {
+            "value": {
+              "styles": {
+                "all": {
+                  "width": "2px",
+                  "color": "#cccccc"
+                }
+              }
+            }
+          }
+        },
+        "font": {
+          "font": {
+            "desktop": {
+              "value": {
+                "size": "14px"
+              }
+            }
+          }
+        }
+      }
+    },
+    "submitButton": {
+      "decoration": {
+        "background": {
+          "desktop": {
+            "value": {
+              "color": "#0066cc"
+            }
+          }
+        },
+        "font": {
+          "font": {
+            "desktop": {
+              "value": {
+                "color": "#ffffff"
+              }
+            }
+          }
+        }
+      }
+    },
+    "css": {
+      "desktop": {
+        "label": "color: red;",
+        "submitButton": "text-transform: uppercase;"
+      }
+    }
+  },
+  "expect": {
+    "formId": "5",
+    "useAjax": "on",
+    "titleSize": "28px",
+    "labelFontSize": "15px",
+    "inputBgNormalized": "#eeeeee",
+    "buttonBg": "#0066cc",
+    "cssFieldLabel": "color: red;",
+    "cssButton": "text-transform: uppercase;",
+    "mappedContains": ["title", "label.font→field.labelFont", "inputGeneral.background", "submitButton→button", "css.label→fieldLabel", "css.submitButton→button"]
+  }
+}

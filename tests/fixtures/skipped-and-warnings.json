@@ -1,0 +1,47 @@
+{
+  "name": "skipped-and-warnings",
+  "input": {
+    "gravityform": {
+      "advanced": {
+        "desktop": {
+          "value": {
+            "id": "3",
+            "useAjax": "off",
+            "showTitle": "off",
+            "showDescription": "off",
+            "tabIndex": "10",
+            "fieldValues": "foo=bar"
+          }
+        }
+      }
+    },
+    "gridRowGap": {
+      "decoration": {
+        "gap": {
+          "desktop": {
+            "value": "24px"
+          }
+        }
+      }
+    },
+    "sendLinkButton": {
+      "decoration": {
+        "font": {
+          "font": {
+            "desktop": {
+              "value": {
+                "size": "12px"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "expect": {
+    "formId": "3",
+    "useAjax": "off",
+    "warningsContains": ["showTitle:off", "showDescription:off"],
+    "skippedContains": ["gridRowGap", "sendLinkButton", "tabIndex", "fieldValues"]
+  }
+}
